@@ -1,0 +1,379 @@
+{% comment %}
+  Renders custom filters for product type and tags
+
+  Accepts:
+  - results: {Object} Collection object
+  - filter_type: {String} Type of filter layout
+
+  Usage:
+  {% render 'custom-filters', results: collection, filter_type: 'vertical' %}
+{% endcomment %}
+
+{%- liquid
+  assign all_product_types = ''
+  assign all_product_tags = ''
+  
+  # Collect all unique product types and tags from current collection
+  for product in results.products
+    unless all_product_types contains product.type
+      if product.type != blank
+        assign all_product_types = all_product_types | append: product.type | append: '|'
+      endif
+    endunless
+    
+    for tag in product.tags
+      unless all_product_tags contains tag
+        if tag != blank
+          assign all_product_tags = all_product_tags | append: tag | append: '|'
+        endif
+      endunless
+    endfor
+  endfor
+  
+  assign product_types_array = all_product_types | split: '|'
+  assign product_tags_array = all_product_tags | split: '|'
+  
+  # Get current URL parameters
+  assign current_url = request.url
+  assign url_params = request.url | split: '?'
+  if url_params.size > 1
+    assign query_string = url_params[1]
+  else
+    assign query_string = ''
+  endif
+-%}
+
+<div class="custom-filters">
+  <div class="custom-filters__wrapper{% if filter_type == 'vertical' %} custom-filters__wrapper--vertical{% endif %}">
+    
+    {%- comment -%} Product Type Filter {%- endcomment -%}
+    {%- if product_types_array.size > 0 -%}
+      <details class="custom-filters__details" open>
+        <summary class="custom-filters__summary">
+          <span class="custom-filters__title">{{ 'products.facets.product_type' | t | default: 'Loại sản phẩm' }}</span>
+          <span class="custom-filters__icon">
+            <svg width="12" height="8" viewBox="0 0 12 8" fill="none">
+              <path d="M1 1L6 6L11 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+        </summary>
+        <div class="custom-filters__content">
+          <ul class="custom-filters__list">
+            {%- for product_type in product_types_array -%}
+              {%- if product_type != blank -%}
+                {%- liquid
+                  assign type_count = 0
+                  for product in results.products
+                    if product.type == product_type
+                      assign type_count = type_count | plus: 1
+                    endif
+                  endfor
+                  
+                  # Check if this type is currently active
+                  assign is_active = false
+                  if query_string contains 'filter.p.product_type'
+                    assign type_encoded = product_type | url_encode
+                    if query_string contains type_encoded
+                      assign is_active = true
+                    endif
+                  endif
+                  
+                  # Build filter URL
+                  if is_active
+                    # Remove this filter
+                    assign filter_param = 'filter.p.product_type=' | append: type_encoded
+                    assign new_query = query_string | replace: filter_param, ''
+                    assign new_query = new_query | replace: '&&', '&'
+                    assign new_query = new_query | replace: '&', ''
+                    if new_query != ''
+                      assign filter_url = results.url | append: '?' | append: new_query
+                    else
+                      assign filter_url = results.url
+                    endif
+                  else
+                    # Add this filter
+                    assign filter_param = 'filter.p.product_type=' | append: type_encoded
+                    if query_string != ''
+                      assign filter_url = results.url | append: '?' | append: query_string | append: '&' | append: filter_param
+                    else
+                      assign filter_url = results.url | append: '?' | append: filter_param
+                    endif
+                  endif
+                -%}
+                <li class="custom-filters__item">
+                  <a href="{{ filter_url }}" 
+                     class="custom-filters__link{% if is_active %} custom-filters__link--active{% endif %}"
+                     data-filter-type="product_type"
+                     data-filter-value="{{ product_type | escape }}">
+                    <span class="custom-filters__checkbox">
+                      {%- if is_active -%}
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                          <path d="M10 3L4.5 8.5L2 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                      {%- endif -%}
+                    </span>
+                    <span class="custom-filters__label">{{ product_type | escape }}</span>
+                    <span class="custom-filters__count">({{ type_count }})</span>
+                  </a>
+                </li>
+              {%- endif -%}
+            {%- endfor -%}
+          </ul>
+        </div>
+      </details>
+    {%- endif -%}
+
+    {%- comment -%} Product Tags Filter {%- endcomment -%}
+    {%- if product_tags_array.size > 0 -%}
+      <details class="custom-filters__details" open>
+        <summary class="custom-filters__summary">
+          <span class="custom-filters__title">{{ 'products.facets.product_tags' | t | default: 'Tags sản phẩm' }}</span>
+          <span class="custom-filters__icon">
+            <svg width="12" height="8" viewBox="0 0 12 8" fill="none">
+              <path d="M1 1L6 6L11 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+        </summary>
+        <div class="custom-filters__content">
+          <ul class="custom-filters__list">
+            {%- for tag in product_tags_array -%}
+              {%- if tag != blank -%}
+                {%- liquid
+                  assign tag_count = 0
+                  for product in results.products
+                    if product.tags contains tag
+                      assign tag_count = tag_count | plus: 1
+                    endif
+                  endfor
+                  
+                  # Check if this tag is currently active
+                  assign is_active = false
+                  if query_string contains 'filter.p.tag'
+                    assign tag_encoded = tag | url_encode
+                    if query_string contains tag_encoded
+                      assign is_active = true
+                    endif
+                  endif
+                  
+                  # Build filter URL
+                  if is_active
+                    # Remove this filter
+                    assign filter_param = 'filter.p.tag=' | append: tag_encoded
+                    assign new_query = query_string | replace: filter_param, ''
+                    assign new_query = new_query | replace: '&&', '&'
+                    assign new_query = new_query | replace: '&', ''
+                    if new_query != ''
+                      assign filter_url = results.url | append: '?' | append: new_query
+                    else
+                      assign filter_url = results.url
+                    endif
+                  else
+                    # Add this filter
+                    assign filter_param = 'filter.p.tag=' | append: tag_encoded
+                    if query_string != ''
+                      assign filter_url = results.url | append: '?' | append: query_string | append: '&' | append: filter_param
+                    else
+                      assign filter_url = results.url | append: '?' | append: filter_param
+                    endif
+                  endif
+                -%}
+                <li class="custom-filters__item">
+                  <a href="{{ filter_url }}" 
+                     class="custom-filters__link{% if is_active %} custom-filters__link--active{% endif %}"
+                     data-filter-type="product_tag"
+                     data-filter-value="{{ tag | escape }}">
+                    <span class="custom-filters__checkbox">
+                      {%- if is_active -%}
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                          <path d="M10 3L4.5 8.5L2 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                      {%- endif -%}
+                    </span>
+                    <span class="custom-filters__label">{{ tag | escape }}</span>
+                    <span class="custom-filters__count">({{ tag_count }})</span>
+                  </a>
+                </li>
+              {%- endif -%}
+            {%- endfor -%}
+          </ul>
+        </div>
+      </details>
+    {%- endif -%}
+
+  </div>
+</div>
+
+<style>
+.custom-filters {
+  margin-bottom: 2rem;
+}
+
+.custom-filters__wrapper {
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 0.6rem;
+  overflow: hidden;
+  background: rgb(var(--color-background));
+}
+
+.custom-filters__wrapper--vertical {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.custom-filters__details {
+  border-bottom: 1px solid rgb(var(--color-border));
+}
+
+.custom-filters__wrapper--vertical .custom-filters__details {
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 0.6rem;
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+}
+
+.custom-filters__details:last-child {
+  border-bottom: none;
+}
+
+.custom-filters__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  background: rgb(var(--color-background));
+  transition: background-color 0.15s ease;
+}
+
+.custom-filters__summary::-webkit-details-marker {
+  display: none;
+}
+
+.custom-filters__summary:hover {
+  background: rgba(var(--color-foreground), 0.04);
+}
+
+.custom-filters__title {
+  font-weight: 500;
+  font-size: 1.4rem;
+  color: rgb(var(--color-foreground));
+}
+
+.custom-filters__icon {
+  color: rgb(var(--color-foreground));
+  transition: transform 0.15s ease;
+}
+
+.custom-filters__details[open] .custom-filters__icon {
+  transform: rotate(180deg);
+}
+
+.custom-filters__content {
+  padding: 0 1.5rem 1.5rem;
+  background: rgb(var(--color-background));
+}
+
+.custom-filters__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.custom-filters__item {
+  margin-bottom: 0.8rem;
+}
+
+.custom-filters__item:last-child {
+  margin-bottom: 0;
+}
+
+.custom-filters__link {
+  display: flex;
+  align-items: center;
+  padding: 0.8rem 1rem;
+  border: 1px solid rgba(var(--color-border), 0.5);
+  border-radius: 0.4rem;
+  text-decoration: none;
+  color: rgb(var(--color-foreground));
+  transition: all 0.15s ease;
+  background: rgb(var(--color-background));
+}
+
+.custom-filters__link:hover {
+  border-color: rgb(var(--color-border));
+  background: rgba(var(--color-foreground), 0.02);
+}
+
+.custom-filters__link--active {
+  border-color: rgb(var(--color-button));
+  background: rgba(var(--color-button), 0.1);
+  color: rgb(var(--color-button));
+}
+
+.custom-filters__checkbox {
+  width: 1.6rem;
+  height: 1.6rem;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 0.3rem;
+  margin-right: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: rgb(var(--color-background));
+  transition: all 0.15s ease;
+}
+
+.custom-filters__link--active .custom-filters__checkbox {
+  border-color: rgb(var(--color-button));
+  background: rgb(var(--color-button));
+  color: rgb(var(--color-background));
+}
+
+.custom-filters__label {
+  flex: 1;
+  font-size: 1.3rem;
+  line-height: 1.4;
+}
+
+.custom-filters__count {
+  font-size: 1.2rem;
+  color: rgba(var(--color-foreground), 0.6);
+  margin-left: 0.5rem;
+}
+
+.custom-filters__link--active .custom-filters__count {
+  color: rgb(var(--color-button));
+}
+
+@media screen and (max-width: 749px) {
+  .custom-filters {
+    margin-bottom: 1.5rem;
+  }
+  
+  .custom-filters__summary {
+    padding: 1.2rem;
+  }
+  
+  .custom-filters__content {
+    padding: 0 1.2rem 1.2rem;
+  }
+  
+  .custom-filters__title {
+    font-size: 1.3rem;
+  }
+  
+  .custom-filters__link {
+    padding: 0.6rem 0.8rem;
+  }
+  
+  .custom-filters__label {
+    font-size: 1.2rem;
+  }
+}
+</style>
+
+<script src="{{ 'custom-filters.js' | asset_url }}" defer="defer"></script> 

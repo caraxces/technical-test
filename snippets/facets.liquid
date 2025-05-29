@@ -42,6 +42,12 @@
 -%}
 
 <div class="facets-container{% if filter_type == 'drawer' %} facets-container-drawer{% endif %}{% if settings.animations_reveal_on_scroll %} scroll-trigger animate--fade-in{% endif %}">
+  
+  {%- comment -%} Custom Product Type and Tags Filters {%- endcomment -%}
+  {%- if filter_type == 'vertical' -%}
+    {% render 'custom-filters', results: results, filter_type: filter_type %}
+  {%- endif -%}
+
   {%- if filter_type == 'vertical' or filter_type == 'horizontal' -%}
     <facet-filters-form class="facets small-hide">
       <form
