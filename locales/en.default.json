@@ -202,7 +202,8 @@
       "filter_button": "Filter",
       "filters_selected": {
         "one": "{{ count }} selected",
-        "other": "{{ count }} selected"
+        "other": "{{ count }} selected",
+        "zero": "No filters selected"
       },
       "filter_selected_accessibility": "{{ type }} ({{ count }} filters selected)",
       "show_more": "Show more",
@@ -221,15 +222,20 @@
       "sort_by_label": "Sort by:",
       "to": "To",
       "clear_filter": "Remove filter",
+      "vendor": "Vendor",
       "product_type": "Product Type",
-      "product_tags": "Product Tags"
+      "tag": "Tags",
+      "product_theme": "Theme",
+      "search_vendors": "Search vendors...",
+      "search_types": "Search product types...",
+      "search_tags": "Search tags...",
+      "search_themes": "Search themes..."
     }
   },
   "templates": {
     "search": {
       "no_results": "No results found for \"{{ terms }}\". Check the spelling or use a different word or phrase.",
       "page": "Page",
-      "products": "Products",
       "results_pages_with_count": {
         "one": "{{ count }} page",
         "other": "{{ count }} pages"

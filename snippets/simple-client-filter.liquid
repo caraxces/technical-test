@@ -1,0 +1,213 @@
+{% comment %}
+  Simple Client-Side Product Filtering
+  Hide/Show products instead of server-side filtering
+  Much simpler and more reliable approach
+{% endcomment %}
+
+<div class="simple-filter-container">
+  <!-- Filter Controls -->
+  <div class="filter-controls">
+    <h3>Quick Filters:</h3>
+    
+    <div class="filter-group">
+      <label>Brand:</label>
+      <select id="brandFilter" class="filter-select">
+        <option value="">All Brands</option>
+        {%- assign all_vendors = collection.products | map: 'vendor' | uniq | sort -%}
+        {%- for vendor in all_vendors -%}
+          <option value="{{ vendor | escape }}">{{ vendor }}</option>
+        {%- endfor -%}
+      </select>
+    </div>
+    
+    <div class="filter-group">
+      <label>Type:</label>
+      <select id="typeFilter" class="filter-select">
+        <option value="">All Types</option>
+        {%- assign all_types = collection.products | map: 'type' | uniq | sort -%}
+        {%- for type in all_types -%}
+          <option value="{{ type | escape }}">{{ type }}</option>
+        {%- endfor -%}
+      </select>
+    </div>
+    
+    <div class="filter-group">
+      <label>Price Range:</label>
+      <select id="priceFilter" class="filter-select">
+        <option value="">All Prices</option>
+        <option value="0-50">Under $50</option>
+        <option value="50-100">$50 - $100</option>
+        <option value="100-200">$100 - $200</option>
+        <option value="200-999999">Above $200</option>
+      </select>
+    </div>
+    
+    <button id="clearFilters" class="clear-btn">Clear All</button>
+  </div>
+
+  <!-- Results Count -->
+  <div class="results-info">
+    <span id="resultCount">{{ collection.products_count }}</span> products found
+  </div>
+</div>
+
+<style>
+.simple-filter-container {
+  background: #f8f9fa;
+  padding: 1rem;
+  margin-bottom: 2rem;
+  border-radius: 8px;
+}
+
+.filter-controls {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.filter-select {
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+}
+
+.clear-btn {
+  background: #dc3545;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.clear-btn:hover {
+  background: #c82333;
+}
+
+.results-info {
+  margin-top: 1rem;
+  font-weight: bold;
+}
+
+.product-item.hidden {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  .filter-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .filter-group {
+    justify-content: space-between;
+  }
+}
+</style>
+
+<script>
+class SimpleProductFilter {
+  constructor() {
+    this.products = document.querySelectorAll('.product-item, [data-vendor]');
+    this.brandFilter = document.getElementById('brandFilter');
+    this.typeFilter = document.getElementById('typeFilter');
+    this.priceFilter = document.getElementById('priceFilter');
+    this.clearBtn = document.getElementById('clearFilters');
+    this.resultCount = document.getElementById('resultCount');
+    
+    this.init();
+  }
+  
+  init() {
+    // Add event listeners
+    this.brandFilter?.addEventListener('change', () => this.applyFilters());
+    this.typeFilter?.addEventListener('change', () => this.applyFilters());
+    this.priceFilter?.addEventListener('change', () => this.applyFilters());
+    this.clearBtn?.addEventListener('click', () => this.clearAllFilters());
+    
+    console.log(`🔍 Simple Filter initialized with ${this.products.length} products`);
+  }
+  
+  applyFilters() {
+    const selectedBrand = this.brandFilter?.value || '';
+    const selectedType = this.typeFilter?.value || '';
+    const selectedPrice = this.priceFilter?.value || '';
+    
+    let visibleCount = 0;
+    
+    this.products.forEach(product => {
+      let shouldShow = true;
+      
+      // Get product data
+      const productBrand = product.dataset.vendor || '';
+      const productType = product.dataset.type || '';
+      const productPrice = parseFloat(product.dataset.price) || 0;
+      
+      // Apply brand filter
+      if (selectedBrand && productBrand !== selectedBrand) {
+        shouldShow = false;
+      }
+      
+      // Apply type filter
+      if (selectedType && productType !== selectedType) {
+        shouldShow = false;
+      }
+      
+      // Apply price filter
+      if (selectedPrice) {
+        const [minPrice, maxPrice] = selectedPrice.split('-').map(Number);
+        if (productPrice < minPrice || productPrice > maxPrice) {
+          shouldShow = false;
+        }
+      }
+      
+      // Show/hide product
+      if (shouldShow) {
+        product.classList.remove('hidden');
+        visibleCount++;
+      } else {
+        product.classList.add('hidden');
+      }
+    });
+    
+    // Update count
+    if (this.resultCount) {
+      this.resultCount.textContent = visibleCount;
+    }
+    
+    console.log(`🔄 Filters applied: ${visibleCount} products visible`);
+  }
+  
+  clearAllFilters() {
+    // Reset all selects
+    if (this.brandFilter) this.brandFilter.value = '';
+    if (this.typeFilter) this.typeFilter.value = '';
+    if (this.priceFilter) this.priceFilter.value = '';
+    
+    // Show all products
+    this.products.forEach(product => {
+      product.classList.remove('hidden');
+    });
+    
+    // Update count
+    if (this.resultCount) {
+      this.resultCount.textContent = this.products.length;
+    }
+    
+    console.log('🔄 All filters cleared');
+  }
+}
+
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  new SimpleProductFilter();
+});
+</script> 

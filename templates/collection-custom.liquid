@@ -1,0 +1,60 @@
+{% comment %}
+  Custom Collection Template for Testing Filtering
+  Uses main-collection-product-grid section with filtering
+{% endcomment %}
+
+{{ 'template-collection.css' | asset_url | stylesheet_tag }}
+{{ 'component-card.css' | asset_url | stylesheet_tag }}
+{{ 'component-price.css' | asset_url | stylesheet_tag }}
+
+{%- if section.settings.enable_quick_add -%}
+  {{ 'quick-add.css' | asset_url | stylesheet_tag }}
+  <script src="{{ 'quick-add.js' | asset_url }}" defer="defer"></script>
+  <script src="{{ 'product-form.js' | asset_url }}" defer="defer"></script>
+{%- endif -%}
+
+<div class="collection-wrapper">
+  {%- liquid
+    assign sort_by = collection.sort_by | default: collection.default_sort_by
+    assign total_active_values = 0
+    if collection.filters != empty
+      assign current_filter_size = collection.filters | map: 'active_values' | map: 'size'
+      for active_value_size in current_filter_size
+        assign total_active_values = total_active_values | plus: active_value_size
+      endfor
+    endif
+  -%}
+
+  <!-- Collection Header -->
+  <div class="page-width">
+    <div class="collection-hero{% if collection.description == blank and collection.image == blank and total_active_values == 0 %} collection-hero--no-overlay{% endif %}">
+      <div class="collection-hero__inner page-width-desktop">
+        <header class="collection-hero__text-wrapper{% if collection.description != blank %} collection-hero__text-wrapper--has-description{% endif %}">
+          <h1 class="collection-hero__title">
+            <span class="visually-hidden">{{ 'sections.collection_template.title' | t }}: </span>
+            {{- collection.title | escape -}}
+          </h1>
+
+          {%- if collection.description != blank -%}
+            <div class="collection-hero__description">
+              {{ collection.description }}
+            </div>
+          {%- endif -%}
+        </header>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Collection Product Grid -->
+  {% section 'main-collection-product-grid' %}
+
+
+    
+    <div style="margin-top: 1.5rem; padding: 1rem; background: #e9ecef; border-radius: 4px;">
+      <h5 style="color: #6c757d; margin: 0 0 0.5rem 0;">🧪 Test URLs:</h5>
+      <p><strong>Filter by vendor:</strong> ?filter.p.vendor=Nike</p>
+      <p><strong>Filter by type:</strong> ?filter.p.type=Sneakers</p>
+      <p><strong>Filter by tag:</strong> ?filter.p.tag=Sale</p>
+      <p><strong>Filter by theme:</strong> ?filter.p.m.custom.product_theme=Sports</p>
+    </div>
+</div> 

@@ -1,379 +1,756 @@
 {% comment %}
-  Renders custom filters for product type and tags
-
-  Accepts:
-  - results: {Object} Collection object
-  - filter_type: {String} Type of filter layout
-
-  Usage:
-  {% render 'custom-filters', results: collection, filter_type: 'vertical' %}
+  Custom Product Filtering System - No Third Party App Required
+  Pure JavaScript + AJAX + Liquid Implementation
+  Compatible with Dawn theme and responsive design
 {% endcomment %}
 
+{{ 'component-show-more.css' | asset_url | stylesheet_tag }}
+
 {%- liquid
-  assign all_product_types = ''
-  assign all_product_tags = ''
-  
-  # Collect all unique product types and tags from current collection
-  for product in results.products
-    unless all_product_types contains product.type
-      if product.type != blank
-        assign all_product_types = all_product_types | append: product.type | append: '|'
-      endif
-    endunless
-    
-    for tag in product.tags
-      unless all_product_tags contains tag
-        if tag != blank
-          assign all_product_tags = all_product_tags | append: tag | append: '|'
-        endif
-      endunless
-    endfor
-  endfor
-  
-  assign product_types_array = all_product_types | split: '|'
-  assign product_tags_array = all_product_tags | split: '|'
-  
-  # Get current URL parameters
-  assign current_url = request.url
-  assign url_params = request.url | split: '?'
-  if url_params.size > 1
-    assign query_string = url_params[1]
+  assign sort_by = collection.sort_by | default: collection.default_sort_by
+  if collection.url
+    assign collection_url = collection.url
   else
-    assign query_string = ''
+    assign collection_url = '/collections/all'
   endif
+
+  # Get all available filter options from collection products
+  assign all_vendors = collection.products | map: 'vendor' | uniq | sort
+  assign all_product_types = collection.products | map: 'type' | uniq | sort
+  assign all_tags = collection.products | map: 'tags' | join: ',' | split: ',' | uniq | sort
+  assign all_themes = collection.products | map: 'metafields.custom.product_theme.value' | compact | uniq | sort
+
+  # Get current filter values from URL - Using official Shopify filter format
+  assign current_vendor = request.params['filter.p.vendor']
+  assign current_type = request.params['filter.p.type']
+  assign current_tag = request.params['filter.p.tag']
+  assign current_theme = request.params['filter.p.m.custom.product_theme']
+  assign current_price_min = request.params['filter.v.price.gte']
+  assign current_price_max = request.params['filter.v.price.lte']
+
+  # Filter products based on URL parameters
+  assign filtered_products = collection.products
+  
+  if current_vendor != blank
+    assign filtered_products = filtered_products | where: 'vendor', current_vendor
+  endif
+  
+  if current_type != blank
+    assign filtered_products = filtered_products | where: 'type', current_type
+  endif
+  
+  if current_tag != blank
+    assign temp_products = ''
+    for product in filtered_products
+      if product.tags contains current_tag
+        assign temp_products = temp_products | append: product.id | append: ','
+      endif
+    endfor
+    assign filtered_product_ids = temp_products | split: ','
+    assign filtered_products = collection.products | where: 'id', filtered_product_ids
+  endif
+  
+  if current_theme != blank
+    assign filtered_products = filtered_products | where: 'metafields.custom.product_theme.value', current_theme
+  endif
+
+  # Calculate price range
+  assign min_price = collection.products.first.price
+  assign max_price = collection.products.first.price
+  for product in collection.products
+    if product.price < min_price
+      assign min_price = product.price
+    endif
+    if product.price > max_price
+      assign max_price = product.price
+    endif
+  endfor
 -%}
 
-<div class="custom-filters">
-  <div class="custom-filters__wrapper{% if filter_type == 'vertical' %} custom-filters__wrapper--vertical{% endif %}">
-    
-    {%- comment -%} Product Type Filter {%- endcomment -%}
-    {%- if product_types_array.size > 0 -%}
-      <details class="custom-filters__details" open>
-        <summary class="custom-filters__summary">
-          <span class="custom-filters__title">{{ 'products.facets.product_type' | t | default: 'Loại sản phẩm' }}</span>
-          <span class="custom-filters__icon">
-            <svg width="12" height="8" viewBox="0 0 12 8" fill="none">
-              <path d="M1 1L6 6L11 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </span>
-        </summary>
-        <div class="custom-filters__content">
-          <ul class="custom-filters__list">
-            {%- for product_type in product_types_array -%}
-              {%- if product_type != blank -%}
-                {%- liquid
-                  assign type_count = 0
-                  for product in results.products
-                    if product.type == product_type
-                      assign type_count = type_count | plus: 1
-                    endif
-                  endfor
-                  
-                  # Check if this type is currently active
-                  assign is_active = false
-                  if query_string contains 'filter.p.product_type'
-                    assign type_encoded = product_type | url_encode
-                    if query_string contains type_encoded
-                      assign is_active = true
-                    endif
-                  endif
-                  
-                  # Build filter URL
-                  if is_active
-                    # Remove this filter
-                    assign filter_param = 'filter.p.product_type=' | append: type_encoded
-                    assign new_query = query_string | replace: filter_param, ''
-                    assign new_query = new_query | replace: '&&', '&'
-                    assign new_query = new_query | replace: '&', ''
-                    if new_query != ''
-                      assign filter_url = results.url | append: '?' | append: new_query
-                    else
-                      assign filter_url = results.url
-                    endif
-                  else
-                    # Add this filter
-                    assign filter_param = 'filter.p.product_type=' | append: type_encoded
-                    if query_string != ''
-                      assign filter_url = results.url | append: '?' | append: query_string | append: '&' | append: filter_param
-                    else
-                      assign filter_url = results.url | append: '?' | append: filter_param
-                    endif
-                  endif
-                -%}
-                <li class="custom-filters__item">
-                  <a href="{{ filter_url }}" 
-                     class="custom-filters__link{% if is_active %} custom-filters__link--active{% endif %}"
-                     data-filter-type="product_type"
-                     data-filter-value="{{ product_type | escape }}">
-                    <span class="custom-filters__checkbox">
-                      {%- if is_active -%}
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                          <path d="M10 3L4.5 8.5L2 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                      {%- endif -%}
-                    </span>
-                    <span class="custom-filters__label">{{ product_type | escape }}</span>
-                    <span class="custom-filters__count">({{ type_count }})</span>
-                  </a>
-                </li>
-              {%- endif -%}
-            {%- endfor -%}
-          </ul>
-        </div>
-      </details>
-    {%- endif -%}
+<div class="facets-container custom-facets" id="CustomFacetsContainer">
+  <!-- Desktop Filters -->
+  <div class="facets small-hide" id="DesktopFilters">
+    <form class="facets__form" id="CustomFilterForm">
+      <div class="facets__wrapper">
+        <h2 class="facets__heading caption-large text-body">
+          {{ 'products.facets.filter_by_label' | t | default: 'Filter By' }}
+        </h2>
 
-    {%- comment -%} Product Tags Filter {%- endcomment -%}
-    {%- if product_tags_array.size > 0 -%}
-      <details class="custom-filters__details" open>
-        <summary class="custom-filters__summary">
-          <span class="custom-filters__title">{{ 'products.facets.product_tags' | t | default: 'Tags sản phẩm' }}</span>
-          <span class="custom-filters__icon">
-            <svg width="12" height="8" viewBox="0 0 12 8" fill="none">
-              <path d="M1 1L6 6L11 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </span>
-        </summary>
-        <div class="custom-filters__content">
-          <ul class="custom-filters__list">
-            {%- for tag in product_tags_array -%}
-              {%- if tag != blank -%}
-                {%- liquid
-                  assign tag_count = 0
-                  for product in results.products
-                    if product.tags contains tag
-                      assign tag_count = tag_count | plus: 1
-                    endif
-                  endfor
-                  
-                  # Check if this tag is currently active
-                  assign is_active = false
-                  if query_string contains 'filter.p.tag'
-                    assign tag_encoded = tag | url_encode
-                    if query_string contains tag_encoded
-                      assign is_active = true
-                    endif
-                  endif
-                  
-                  # Build filter URL
-                  if is_active
-                    # Remove this filter
-                    assign filter_param = 'filter.p.tag=' | append: tag_encoded
-                    assign new_query = query_string | replace: filter_param, ''
-                    assign new_query = new_query | replace: '&&', '&'
-                    assign new_query = new_query | replace: '&', ''
-                    if new_query != ''
-                      assign filter_url = results.url | append: '?' | append: new_query
-                    else
-                      assign filter_url = results.url
-                    endif
-                  else
-                    # Add this filter
-                    assign filter_param = 'filter.p.tag=' | append: tag_encoded
-                    if query_string != ''
-                      assign filter_url = results.url | append: '?' | append: query_string | append: '&' | append: filter_param
-                    else
-                      assign filter_url = results.url | append: '?' | append: filter_param
-                    endif
-                  endif
-                -%}
-                <li class="custom-filters__item">
-                  <a href="{{ filter_url }}" 
-                     class="custom-filters__link{% if is_active %} custom-filters__link--active{% endif %}"
-                     data-filter-type="product_tag"
-                     data-filter-value="{{ tag | escape }}">
-                    <span class="custom-filters__checkbox">
-                      {%- if is_active -%}
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                          <path d="M10 3L4.5 8.5L2 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                      {%- endif -%}
-                    </span>
-                    <span class="custom-filters__label">{{ tag | escape }}</span>
-                    <span class="custom-filters__count">({{ tag_count }})</span>
-                  </a>
-                </li>
-              {%- endif -%}
-            {%- endfor -%}
-          </ul>
-        </div>
-      </details>
-    {%- endif -%}
+        <!-- Vendor Filter -->
+        {%- if all_vendors.size > 0 -%}
+          <details class="facets__disclosure-vertical js-custom-filter" open>
+            <summary class="facets__summary caption-large focus-offset">
+              <div>
+                <span class="facets__summary-label">
+                  {{ 'products.facets.vendor' | t | default: 'Brand' }}
+                  <span class="facets__selected" id="vendor-count">({{ all_vendors.size }})</span>
+                </span>
+                {{- 'icon-caret.svg' | inline_asset_content -}}
+              </div>
+            </summary>
+            <div class="facets__display-vertical">
+              <fieldset class="facets-wrap facets-wrap-vertical">
+                <legend class="visually-hidden">{{ 'products.facets.vendor' | t | default: 'Brand' }}</legend>
+                <ul class="facets__list--vertical list-unstyled" role="list">
+                  {%- for vendor in all_vendors -%}
+                    {%- assign vendor_count = collection.products | where: 'vendor', vendor | size -%}
+                    <li class="list-menu__item facets__item">
+                      <label class="facets__label facet-checkbox{% if current_vendor == vendor %} active{% endif %}">
+                        <input type="checkbox" name="filter.p.vendor" value="{{ vendor | escape }}" 
+                               {% if current_vendor == vendor %}checked{% endif %}
+                               class="facet-checkbox__input custom-filter-input">
+                        {{- 'square.svg' | inline_asset_content -}}
+                        <div class="svg-wrapper">{{- 'icon-checkmark.svg' | inline_asset_content -}}</div>
+                        <span class="facet-checkbox__text">
+                          <span class="facet-checkbox__text-label">{{ vendor | escape }}</span> 
+                          <span class="filter-count">({{ vendor_count }})</span>
+                        </span>
+                      </label>
+                    </li>
+                  {%- endfor -%}
+                </ul>
+              </fieldset>
+            </div>
+          </details>
+        {%- endif -%}
 
+        <!-- Product Type Filter -->
+        {%- if all_product_types.size > 0 -%}
+          <details class="facets__disclosure-vertical js-custom-filter" open>
+            <summary class="facets__summary caption-large focus-offset">
+              <div>
+                <span class="facets__summary-label">
+                  {{ 'products.facets.product_type' | t | default: 'Product Type' }}
+                  <span class="facets__selected" id="type-count">({{ all_product_types.size }})</span>
+                </span>
+                {{- 'icon-caret.svg' | inline_asset_content -}}
+              </div>
+            </summary>
+            <div class="facets__display-vertical">
+              <fieldset class="facets-wrap facets-wrap-vertical">
+                <legend class="visually-hidden">{{ 'products.facets.product_type' | t | default: 'Product Type' }}</legend>
+                <ul class="facets__list--vertical list-unstyled" role="list">
+                  {%- for product_type in all_product_types -%}
+                    {%- assign type_count = collection.products | where: 'type', product_type | size -%}
+                    <li class="list-menu__item facets__item">
+                      <label class="facets__label facet-checkbox{% if current_type == product_type %} active{% endif %}">
+                        <input type="checkbox" name="filter.p.type" value="{{ product_type | escape }}" 
+                               {% if current_type == product_type %}checked{% endif %}
+                               class="facet-checkbox__input custom-filter-input">
+                        {{- 'square.svg' | inline_asset_content -}}
+                        <div class="svg-wrapper">{{- 'icon-checkmark.svg' | inline_asset_content -}}</div>
+                        <span class="facet-checkbox__text">
+                          <span class="facet-checkbox__text-label">{{ product_type | escape }}</span> 
+                          <span class="filter-count">({{ type_count }})</span>
+                        </span>
+                      </label>
+                    </li>
+                  {%- endfor -%}
+                </ul>
+              </fieldset>
+            </div>
+          </details>
+        {%- endif -%}
+
+        <!-- Tags Filter -->
+        {%- if all_tags.size > 0 -%}
+          <details class="facets__disclosure-vertical js-custom-filter">
+            <summary class="facets__summary caption-large focus-offset">
+              <div>
+                <span class="facets__summary-label">
+                  {{ 'products.facets.tag' | t | default: 'Tags' }}
+                  <span class="facets__selected" id="tag-count">({{ all_tags.size }})</span>
+                </span>
+                {{- 'icon-caret.svg' | inline_asset_content -}}
+              </div>
+            </summary>
+            <div class="facets__display-vertical">
+              <fieldset class="facets-wrap facets-wrap-vertical">
+                <legend class="visually-hidden">{{ 'products.facets.tag' | t | default: 'Tags' }}</legend>
+                <ul class="facets__list--vertical list-unstyled" role="list">
+                  {%- for tag in all_tags -%}
+                    {%- unless tag == blank -%}
+                      {%- assign tag_trimmed = tag | strip -%}
+                      {%- assign tag_count = 0 -%}
+                      {%- for product in collection.products -%}
+                        {%- if product.tags contains tag_trimmed -%}
+                          {%- assign tag_count = tag_count | plus: 1 -%}
+                        {%- endif -%}
+                      {%- endfor -%}
+                      {%- if tag_count > 0 -%}
+                        <li class="list-menu__item facets__item">
+                          <label class="facets__label facet-checkbox{% if current_tag == tag_trimmed %} active{% endif %}">
+                            <input type="checkbox" name="filter.p.tag" value="{{ tag_trimmed | escape }}" 
+                                   {% if current_tag == tag_trimmed %}checked{% endif %}
+                                   class="facet-checkbox__input custom-filter-input">
+                            {{- 'square.svg' | inline_asset_content -}}
+                            <div class="svg-wrapper">{{- 'icon-checkmark.svg' | inline_asset_content -}}</div>
+                            <span class="facet-checkbox__text">
+                              <span class="facet-checkbox__text-label">{{ tag_trimmed | escape }}</span> 
+                              <span class="filter-count">({{ tag_count }})</span>
+                            </span>
+                          </label>
+                        </li>
+                      {%- endif -%}
+                    {%- endunless -%}
+                  {%- endfor -%}
+                </ul>
+              </fieldset>
+            </div>
+          </details>
+        {%- endif -%}
+
+        <!-- Product Theme Filter -->
+        {%- if all_themes.size > 0 -%}
+          <details class="facets__disclosure-vertical js-custom-filter">
+            <summary class="facets__summary caption-large focus-offset">
+              <div>
+                <span class="facets__summary-label">
+                  {{ 'products.facets.product_theme' | t | default: 'Theme' }}
+                  <span class="facets__selected" id="theme-count">({{ all_themes.size }})</span>
+                </span>
+                {{- 'icon-caret.svg' | inline_asset_content -}}
+              </div>
+            </summary>
+            <div class="facets__display-vertical">
+              <fieldset class="facets-wrap facets-wrap-vertical">
+                <legend class="visually-hidden">{{ 'products.facets.product_theme' | t | default: 'Theme' }}</legend>
+                <ul class="facets__list--vertical list-unstyled" role="list">
+                  {%- for theme in all_themes -%}
+                    {%- assign theme_count = collection.products | where: 'metafields.custom.product_theme.value', theme | size -%}
+                    <li class="list-menu__item facets__item">
+                      <label class="facets__label facet-checkbox{% if current_theme == theme %} active{% endif %}">
+                        <input type="checkbox" name="filter.p.m.custom.product_theme" value="{{ theme | escape }}" 
+                               {% if current_theme == theme %}checked{% endif %}
+                               class="facet-checkbox__input custom-filter-input">
+                        {{- 'square.svg' | inline_asset_content -}}
+                        <div class="svg-wrapper">{{- 'icon-checkmark.svg' | inline_asset_content -}}</div>
+                        <span class="facet-checkbox__text">
+                          <span class="facet-checkbox__text-label">{{ theme | escape }}</span> 
+                          <span class="filter-count">({{ theme_count }})</span>
+                        </span>
+                      </label>
+                    </li>
+                  {%- endfor -%}
+                </ul>
+              </fieldset>
+            </div>
+          </details>
+        {%- endif -%}
+
+        <!-- Price Range Filter -->
+        <details class="facets__disclosure-vertical js-custom-filter">
+          <summary class="facets__summary caption-large focus-offset">
+            <div>
+              <span class="facets__summary-label">
+                Price
+              </span>
+              {{- 'icon-caret.svg' | inline_asset_content -}}
+            </div>
+          </summary>
+          <div class="facets__display-vertical">
+            <div class="price-range-inputs">
+              <div class="field">
+                <input class="field__input" name="filter.v.price.gte" id="Filter-Price-GTE" 
+                       {% if current_price_min %}value="{{ current_price_min }}"{% endif %}
+                       type="number" placeholder="{{ min_price | money_without_currency | round }}" min="0">
+                <label class="field__label" for="Filter-Price-GTE">{{ 'products.facets.from' | t | default: 'From' }}</label>
+              </div>
+              <div class="field">
+                <input class="field__input" name="filter.v.price.lte" id="Filter-Price-LTE" 
+                       {% if current_price_max %}value="{{ current_price_max }}"{% endif %}
+                       type="number" placeholder="{{ max_price | money_without_currency | round }}" min="0">
+                <label class="field__label" for="Filter-Price-LTE">{{ 'products.facets.to' | t | default: 'To' }}</label>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <!-- Sort By -->
+        <div class="facet-filters sorting caption">
+          <div class="facet-filters__field">
+            <h2 class="facet-filters__label caption-large text-body">
+              <label for="SortBy">{{ 'products.facets.sort_by_label' | t | default: 'Sort by' }}</label>
+            </h2>
+            <div class="select">
+              <select name="sort_by" class="facet-filters__sort select__select caption-large" id="SortBy">
+                <option value="manual" {% if collection.sort_by == 'manual' %}selected{% endif %}>Featured</option>
+                <option value="best-selling" {% if collection.sort_by == 'best-selling' %}selected{% endif %}>Best selling</option>
+                <option value="title-ascending" {% if collection.sort_by == 'title-ascending' %}selected{% endif %}>Alphabetically, A-Z</option>
+                <option value="title-descending" {% if collection.sort_by == 'title-descending' %}selected{% endif %}>Alphabetically, Z-A</option>
+                <option value="price-ascending" {% if collection.sort_by == 'price-ascending' %}selected{% endif %}>Price, low to high</option>
+                <option value="price-descending" {% if collection.sort_by == 'price-descending' %}selected{% endif %}>Price, high to low</option>
+                <option value="created-descending" {% if collection.sort_by == 'created-descending' %}selected{% endif %}>Date, new to old</option>
+                <option value="created-ascending" {% if collection.sort_by == 'created-ascending' %}selected{% endif %}>Date, old to new</option>
+              </select>
+              <span class="svg-wrapper">{{- 'icon-caret.svg' | inline_asset_content -}}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Clear All Button -->
+        <div class="facets__footer">
+          <button type="button" class="button button--secondary" id="ClearAllFilters">
+            {{ 'products.facets.clear_all' | t | default: 'Clear all filters' }}
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- Mobile Filter Button -->
+  <div class="mobile-facets medium-hide large-up-hide">
+    <button class="mobile-facets__open-wrapper focus-offset" aria-expanded="false" id="MobileFilterToggle">
+      <span class="mobile-facets__open">
+        {{- 'icon-filter.svg' | inline_asset_content -}}
+        <span class="mobile-facets__open-label button-label">
+          {{ 'products.facets.filter_button' | t | default: 'Filter' }}
+        </span>
+      </span>
+    </button>
+  </div>
+
+  <!-- Active Filters Display -->
+  <div class="active-facets" id="ActiveFilters">
+    {%- if current_vendor or current_type or current_tag or current_theme or current_price_min or current_price_max -%}
+      <div class="active-facets-vertical-filter">
+        <h3 class="facets__heading caption-large text-body">
+          Active Filters
+        </h3>
+      </div>
+      
+      {%- if current_vendor -%}
+        <button type="button" class="active-facets__button active-facets__button--light remove-filter" data-filter="filter.p.vendor">
+          <span class="active-facets__button-inner button button--tertiary">
+            Brand: {{ current_vendor }}
+            <span class="svg-wrapper">{{- 'icon-close-small.svg' | inline_asset_content -}}</span>
+          </span>
+        </button>
+      {%- endif -%}
+      
+      {%- if current_type -%}
+        <button type="button" class="active-facets__button active-facets__button--light remove-filter" data-filter="filter.p.type">
+          <span class="active-facets__button-inner button button--tertiary">
+            Type: {{ current_type }}
+            <span class="svg-wrapper">{{- 'icon-close-small.svg' | inline_asset_content -}}</span>
+          </span>
+        </button>
+      {%- endif -%}
+      
+      {%- if current_tag -%}
+        <button type="button" class="active-facets__button active-facets__button--light remove-filter" data-filter="filter.p.tag">
+          <span class="active-facets__button-inner button button--tertiary">
+            Tag: {{ current_tag }}
+            <span class="svg-wrapper">{{- 'icon-close-small.svg' | inline_asset_content -}}</span>
+          </span>
+        </button>
+      {%- endif -%}
+      
+      {%- if current_theme -%}
+        <button type="button" class="active-facets__button active-facets__button--light remove-filter" data-filter="filter.p.m.custom.product_theme">
+          <span class="active-facets__button-inner button button--tertiary">
+            Theme: {{ current_theme }}
+            <span class="svg-wrapper">{{- 'icon-close-small.svg' | inline_asset_content -}}</span>
+          </span>
+        </button>
+      {%- endif -%}
+      
+      {%- if current_price_min or current_price_max -%}
+        <button type="button" class="active-facets__button active-facets__button--light remove-filter" data-filter="price">
+          <span class="active-facets__button-inner button button--tertiary">
+            Price: {{ current_price_min | default: 0 | money }} - {{ current_price_max | default: max_price | money }}
+            <span class="svg-wrapper">{{- 'icon-close-small.svg' | inline_asset_content -}}</span>
+          </span>
+        </button>
+      {%- endif -%}
+    {%- endif -%}
+  </div>
+
+  <!-- Product Count -->
+  <div class="product-count light" role="status">
+    <h2 class="product-count__text text-body">
+      <span id="ProductCount">
+        {% assign total_products = filtered_products.size | default: collection.products_count %}
+        {{ 'products.facets.product_count_simple' | t: count: total_products | default: total_products }} 
+        {% if total_products == 1 %}product{% else %}products{% endif %}
+      </span>
+    </h2>
+    <div class="loading-overlay__spinner hidden">
+      {%- render 'loading-spinner' -%}
+    </div>
   </div>
 </div>
 
+<!-- Store collection data for JavaScript -->
+<script type="application/json" id="collection-data">
+{
+  "handle": "{{ collection.handle }}",
+  "url": "{{ collection.url }}",
+  "total_products": {{ collection.products_count }},
+  "current_filters": {
+    "filter.p.vendor": {{ current_vendor | json }},
+    "filter.p.type": {{ current_type | json }},
+    "filter.p.tag": {{ current_tag | json }},
+    "filter.p.m.custom.product_theme": {{ current_theme | json }},
+    "filter.v.price.gte": {{ current_price_min | json }},
+    "filter.v.price.lte": {{ current_price_max | json }},
+    "sort_by": {{ collection.sort_by | json }}
+  }
+}
+</script>
+
+<!-- Custom Filtering JavaScript -->
+<script>
+class CustomProductFilter {
+  constructor() {
+    this.container = document.getElementById('CustomFacetsContainer');
+    this.form = document.getElementById('CustomFilterForm');
+    this.productGrid = document.getElementById('product-grid');
+    this.productCount = document.getElementById('ProductCount');
+    this.loadingSpinner = document.querySelector('.loading-overlay__spinner');
+    
+    // Get collection data
+    this.collectionData = JSON.parse(document.getElementById('collection-data').textContent);
+    
+    // Current filters
+    this.activeFilters = this.collectionData.current_filters || {};
+    
+    this.init();
+  }
+
+  init() {
+    // Add event listeners
+    this.form.addEventListener('change', this.handleFilterChange.bind(this));
+    this.form.addEventListener('input', this.debounce(this.handlePriceChange.bind(this), 500));
+    
+    // Clear all filters
+    const clearAllBtn = document.getElementById('ClearAllFilters');
+    if (clearAllBtn) {
+      clearAllBtn.addEventListener('click', this.clearAllFilters.bind(this));
+    }
+    
+    // Remove individual filters
+    document.querySelectorAll('.remove-filter').forEach(btn => {
+      btn.addEventListener('click', this.removeFilter.bind(this));
+    });
+
+    // Mobile filter toggle
+    const mobileToggle = document.getElementById('MobileFilterToggle');
+    if (mobileToggle) {
+      mobileToggle.addEventListener('click', this.toggleMobileFilters.bind(this));
+    }
+  }
+
+  handleFilterChange(event) {
+    const input = event.target;
+    
+    if (input.classList.contains('custom-filter-input')) {
+      // Handle checkbox filters - Use official Shopify filter format
+      if (input.checked) {
+        this.activeFilters[input.name] = input.value;
+        
+        // Uncheck other checkboxes in the same group
+        const otherInputs = this.form.querySelectorAll(`input[name="${input.name}"]:not([value="${input.value}"])`);
+        otherInputs.forEach(otherInput => {
+          otherInput.checked = false;
+        });
+      } else {
+        this.activeFilters[input.name] = '';
+      }
+      
+      this.applyFilters();
+      
+    } else if (input.name === 'sort_by') {
+      // Handle sort
+      this.activeFilters.sort_by = input.value;
+      this.applyFilters();
+    }
+  }
+
+  handlePriceChange(event) {
+    const input = event.target;
+    
+    if (input.name === 'filter.v.price.gte' || input.name === 'filter.v.price.lte') {
+      this.activeFilters[input.name] = input.value;
+      this.applyFilters();
+    }
+  }
+
+  applyFilters() {
+    this.showLoading();
+    this.updateURL();
+    this.loadFilteredPage();
+  }
+
+  loadFilteredPage() {
+    const params = new URLSearchParams();
+    
+    Object.keys(this.activeFilters).forEach(key => {
+      if (this.activeFilters[key]) {
+        params.set(key, this.activeFilters[key]);
+      }
+    });
+    
+    const url = `${this.collectionData.url}${params.toString() ? '?' + params.toString() : ''}`;
+    
+    // Use AJAX to load the filtered page
+    fetch(url)
+      .then(response => response.text())
+      .then(html => {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        
+        // Update product grid
+        const newProductGrid = doc.getElementById('product-grid');
+        if (newProductGrid && this.productGrid) {
+          this.productGrid.innerHTML = newProductGrid.innerHTML;
+        }
+        
+        // Update product count
+        const newProductCount = doc.getElementById('ProductCount');
+        if (newProductCount && this.productCount) {
+          this.productCount.innerHTML = newProductCount.innerHTML;
+        }
+        
+        // Update filter counts
+        this.updateFilterCounts(doc);
+        
+        this.hideLoading();
+      })
+      .catch(error => {
+        console.error('Filter error:', error);
+        this.hideLoading();
+        // Fallback to page reload
+        window.location.href = url;
+      });
+  }
+
+  updateFilterCounts(doc) {
+    // Update filter counts from the new page
+    const newFilterCounts = doc.querySelectorAll('.filter-count');
+    const currentFilterCounts = this.container.querySelectorAll('.filter-count');
+    
+    newFilterCounts.forEach((newCount, index) => {
+      if (currentFilterCounts[index]) {
+        currentFilterCounts[index].textContent = newCount.textContent;
+      }
+    });
+    
+    // Update active filters display
+    const newActiveFilters = doc.getElementById('ActiveFilters');
+    const currentActiveFilters = document.getElementById('ActiveFilters');
+    if (newActiveFilters && currentActiveFilters) {
+      currentActiveFilters.innerHTML = newActiveFilters.innerHTML;
+      
+      // Re-attach event listeners to new remove buttons
+      currentActiveFilters.querySelectorAll('.remove-filter').forEach(btn => {
+        btn.addEventListener('click', this.removeFilter.bind(this));
+      });
+    }
+  }
+
+  updateURL() {
+    const params = new URLSearchParams();
+    
+    Object.keys(this.activeFilters).forEach(key => {
+      if (this.activeFilters[key]) {
+        params.set(key, this.activeFilters[key]);
+      }
+    });
+    
+    const url = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`;
+    history.pushState({}, '', url);
+  }
+
+  clearAllFilters() {
+    this.activeFilters = { sort_by: 'manual' };
+    
+    // Uncheck all filter inputs
+    this.form.querySelectorAll('.custom-filter-input').forEach(input => {
+      input.checked = false;
+    });
+    
+    // Clear price inputs
+    this.form.querySelectorAll('input[type="number"]').forEach(input => {
+      input.value = '';
+    });
+    
+    // Reset sort
+    this.form.querySelector('select[name="sort_by"]').value = 'manual';
+    
+    this.applyFilters();
+  }
+
+  removeFilter(event) {
+    const filterType = event.currentTarget.dataset.filter;
+    
+    if (filterType === 'price') {
+      this.activeFilters['filter.v.price.gte'] = '';
+      this.activeFilters['filter.v.price.lte'] = '';
+      this.form.querySelector('input[name="filter.v.price.gte"]').value = '';
+      this.form.querySelector('input[name="filter.v.price.lte"]').value = '';
+    } else {
+      this.activeFilters[filterType] = '';
+      const input = this.form.querySelector(`input[name="${filterType}"]:checked`);
+      if (input) {
+        input.checked = false;
+      }
+    }
+    
+    this.applyFilters();
+  }
+
+  toggleMobileFilters() {
+    const desktopFilters = document.getElementById('DesktopFilters');
+    if (desktopFilters) {
+      desktopFilters.classList.toggle('mobile-show');
+    }
+  }
+
+  showLoading() {
+    if (this.loadingSpinner) {
+      this.loadingSpinner.classList.remove('hidden');
+    }
+    if (this.productGrid) {
+      this.productGrid.style.opacity = '0.5';
+    }
+  }
+
+  hideLoading() {
+    if (this.loadingSpinner) {
+      this.loadingSpinner.classList.add('hidden');
+    }
+    if (this.productGrid) {
+      this.productGrid.style.opacity = '1';
+    }
+  }
+
+  debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  }
+}
+
+// Initialize the filter when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.getElementById('CustomFacetsContainer')) {
+    new CustomProductFilter();
+  }
+});
+</script>
+
 <style>
-.custom-filters {
-  margin-bottom: 2rem;
+/* Custom Filter Styles */
+.custom-facets {
+  --color-foreground: rgb(var(--color-foreground));
+  --color-background: rgb(var(--color-background));
 }
 
-.custom-filters__wrapper {
-  border: 1px solid rgb(var(--color-border));
-  border-radius: 0.6rem;
-  overflow: hidden;
-  background: rgb(var(--color-background));
+.custom-filter-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
 }
 
-.custom-filters__wrapper--vertical {
-  border: none;
-  border-radius: 0;
-  background: transparent;
+.facet-checkbox.disabled {
+  opacity: 0.5;
+  pointer-events: none;
 }
 
-.custom-filters__details {
-  border-bottom: 1px solid rgb(var(--color-border));
+.filter-count {
+  color: rgb(var(--color-foreground), 0.7);
+  font-size: 0.9em;
 }
 
-.custom-filters__wrapper--vertical .custom-filters__details {
-  border: 1px solid rgb(var(--color-border));
-  border-radius: 0.6rem;
-  margin-bottom: 1.5rem;
-  overflow: hidden;
-}
-
-.custom-filters__details:last-child {
-  border-bottom: none;
-}
-
-.custom-filters__summary {
+.price-range-inputs {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1.5rem;
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-  background: rgb(var(--color-background));
-  transition: background-color 0.15s ease;
+  gap: 1rem;
+  margin-top: 1rem;
 }
 
-.custom-filters__summary::-webkit-details-marker {
+.price-range-inputs .field {
+  flex: 1;
+}
+
+.active-facets {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgb(var(--color-border));
+}
+
+.active-facets-vertical-filter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.remove-filter {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-right: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.loading-overlay__spinner.hidden {
   display: none;
 }
 
-.custom-filters__summary:hover {
-  background: rgba(var(--color-foreground), 0.04);
+.facets__footer {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgb(var(--color-border));
 }
 
-.custom-filters__title {
-  font-weight: 500;
-  font-size: 1.4rem;
-  color: rgb(var(--color-foreground));
-}
-
-.custom-filters__icon {
-  color: rgb(var(--color-foreground));
-  transition: transform 0.15s ease;
-}
-
-.custom-filters__details[open] .custom-filters__icon {
-  transform: rotate(180deg);
-}
-
-.custom-filters__content {
-  padding: 0 1.5rem 1.5rem;
-  background: rgb(var(--color-background));
-}
-
-.custom-filters__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.custom-filters__item {
-  margin-bottom: 0.8rem;
-}
-
-.custom-filters__item:last-child {
-  margin-bottom: 0;
-}
-
-.custom-filters__link {
-  display: flex;
-  align-items: center;
-  padding: 0.8rem 1rem;
-  border: 1px solid rgba(var(--color-border), 0.5);
-  border-radius: 0.4rem;
-  text-decoration: none;
-  color: rgb(var(--color-foreground));
-  transition: all 0.15s ease;
-  background: rgb(var(--color-background));
-}
-
-.custom-filters__link:hover {
-  border-color: rgb(var(--color-border));
-  background: rgba(var(--color-foreground), 0.02);
-}
-
-.custom-filters__link--active {
-  border-color: rgb(var(--color-button));
-  background: rgba(var(--color-button), 0.1);
-  color: rgb(var(--color-button));
-}
-
-.custom-filters__checkbox {
-  width: 1.6rem;
-  height: 1.6rem;
-  border: 1px solid rgb(var(--color-border));
-  border-radius: 0.3rem;
-  margin-right: 1rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  background: rgb(var(--color-background));
-  transition: all 0.15s ease;
-}
-
-.custom-filters__link--active .custom-filters__checkbox {
-  border-color: rgb(var(--color-button));
-  background: rgb(var(--color-button));
-  color: rgb(var(--color-background));
-}
-
-.custom-filters__label {
-  flex: 1;
-  font-size: 1.3rem;
-  line-height: 1.4;
-}
-
-.custom-filters__count {
-  font-size: 1.2rem;
-  color: rgba(var(--color-foreground), 0.6);
-  margin-left: 0.5rem;
-}
-
-.custom-filters__link--active .custom-filters__count {
-  color: rgb(var(--color-button));
-}
-
+/* Mobile styles */
 @media screen and (max-width: 749px) {
-  .custom-filters {
-    margin-bottom: 1.5rem;
+  .custom-facets .facets {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100vh;
+    background: rgb(var(--color-background));
+    z-index: 1000;
+    overflow-y: auto;
+    padding: 2rem;
   }
   
-  .custom-filters__summary {
-    padding: 1.2rem;
+  .custom-facets .facets.mobile-show {
+    display: block;
   }
   
-  .custom-filters__content {
-    padding: 0 1.2rem 1.2rem;
+  .mobile-facets__open-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    border: 1px solid rgb(var(--color-border));
+    border-radius: 0.5rem;
+    background: rgb(var(--color-background));
+    cursor: pointer;
   }
   
-  .custom-filters__title {
-    font-size: 1.3rem;
-  }
-  
-  .custom-filters__link {
-    padding: 0.6rem 0.8rem;
-  }
-  
-  .custom-filters__label {
-    font-size: 1.2rem;
+  .mobile-facets__open {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
   }
 }
-</style>
 
-<script src="{{ 'custom-filters.js' | asset_url }}" defer="defer"></script> 
+@media screen and (min-width: 750px) {
+  .mobile-facets {
+    display: none;
+  }
+}
+</style> 

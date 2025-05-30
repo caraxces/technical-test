@@ -1,0 +1,306 @@
+{% comment %}
+  Custom Collection Template with Filtering
+  For testing custom filter functionality
+{% endcomment %}
+
+<div class="collection-wrapper">
+  <!-- Debug Information -->
+  <div class="debug-info" style="background: #f0f0f0; padding: 1rem; margin: 1rem 0; font-family: monospace; font-size: 12px;">
+    <h4>🔧 Debug Information:</h4>
+    <p><strong>Collection:</strong> {{ collection.title }} ({{ collection.products_count }} products)</p>
+    <p><strong>Current URL:</strong> {{ request.fullpath }}</p>
+    <p><strong>Filter Parameters:</strong></p>
+    <ul>
+      <li>Vendor: {{ request.params['filter.p.vendor'] | default: 'none' }}</li>
+      <li>Type: {{ request.params['filter.p.type'] | default: 'none' }}</li>
+      <li>Tag: {{ request.params['filter.p.tag'] | default: 'none' }}</li>
+      <li>Theme: {{ request.params['filter.p.m.custom.product_theme'] | default: 'none' }}</li>
+      <li>Price Min: {{ request.params['filter.v.price.gte'] | default: 'none' }}</li>
+      <li>Price Max: {{ request.params['filter.v.price.lte'] | default: 'none' }}</li>
+    </ul>
+    
+    {%- liquid
+      # Apply same filtering logic as in custom-filters.liquid
+      assign current_vendor = request.params['filter.p.vendor']
+      assign current_type = request.params['filter.p.type']
+      assign current_tag = request.params['filter.p.tag']
+      assign current_theme = request.params['filter.p.m.custom.product_theme']
+      
+      assign filtered_products = collection.products
+      
+      if current_vendor != blank
+        assign filtered_products = filtered_products | where: 'vendor', current_vendor
+      endif
+      
+      if current_type != blank
+        assign filtered_products = filtered_products | where: 'type', current_type
+      endif
+      
+      if current_tag != blank
+        assign temp_products = ''
+        for product in filtered_products
+          if product.tags contains current_tag
+            assign temp_products = temp_products | append: product.id | append: ','
+          endif
+        endfor
+        assign filtered_product_ids = temp_products | split: ','
+        assign filtered_products = collection.products | where: 'id', filtered_product_ids
+      endif
+      
+      if current_theme != blank
+        assign filtered_products = filtered_products | where: 'metafields.custom.product_theme.value', current_theme
+      endif
+    -%}
+    
+    <p><strong>Filtered Products Count:</strong> {{ filtered_products.size }}</p>
+    <p><strong>Available Vendors:</strong> {{ collection.products | map: 'vendor' | uniq | join: ', ' }}</p>
+    <p><strong>Available Types:</strong> {{ collection.products | map: 'type' | uniq | join: ', ' }}</p>
+    <p><strong>Available Themes:</strong> {{ collection.products | map: 'metafields.custom.product_theme.value' | compact | uniq | join: ', ' }}</p>
+  </div>
+
+  <!-- Custom Filters -->
+  {% render 'custom-filters' %}
+
+  <!-- Product Grid -->
+  <div id="product-grid" class="collection grid grid--1-col grid--2-col-tablet grid--4-col-desktop">
+    {%- liquid
+      # Use filtered products if we have filters active
+      if current_vendor or current_type or current_tag or current_theme
+        assign products_to_show = filtered_products
+      else
+        assign products_to_show = collection.products
+      endif
+    -%}
+    
+    {%- for product in products_to_show -%}
+      <div class="grid__item" data-product-id="{{ product.id }}" 
+           data-vendor="{{ product.vendor }}" 
+           data-type="{{ product.type }}" 
+           data-tags="{{ product.tags | join: ',' }}"
+           data-theme="{{ product.metafields.custom.product_theme.value }}">
+        <div class="card-wrapper">
+          <div class="card card--media">
+            <div class="card__media">
+              <a href="{{ product.url }}">
+                {% if product.featured_image %}
+                  <img src="{{ product.featured_image | img_url: '300x300' }}" 
+                       alt="{{ product.featured_image.alt | escape }}"
+                       width="300" height="300"
+                       loading="lazy">
+                {% else %}
+                  <div class="placeholder-image" style="width: 300px; height: 300px; background: #f0f0f0; display: flex; align-items: center; justify-content: center;">
+                    No Image
+                  </div>
+                {% endif %}
+              </a>
+            </div>
+            <div class="card__content">
+              <h3 class="card__heading h5">
+                <a href="{{ product.url }}">{{ product.title }}</a>
+              </h3>
+              <div class="card__information">
+                <div class="price">
+                  <span class="price__current">{{ product.price | money }}</span>
+                  {% if product.compare_at_price > product.price %}
+                    <span class="price__compare">{{ product.compare_at_price | money }}</span>
+                  {% endif %}
+                </div>
+                <div class="product-meta" style="font-size: 12px; color: #666; margin-top: 0.5rem;">
+                  <div><strong>Brand:</strong> {{ product.vendor }}</div>
+                  <div><strong>Type:</strong> {{ product.type }}</div>
+                  {% if product.tags.size > 0 %}
+                    <div><strong>Tags:</strong> {{ product.tags | join: ', ' }}</div>
+                  {% endif %}
+                  {% if product.metafields.custom.product_theme.value %}
+                    <div><strong>Theme:</strong> {{ product.metafields.custom.product_theme.value }}</div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    {%- else -%}
+      <div class="grid__item grid__item--full">
+        <div class="empty-state">
+          <h2>No products found</h2>
+          <p>Try adjusting your filters or browse all products.</p>
+          <a href="{{ collection.url }}" class="button">Clear Filters</a>
+        </div>
+      </div>
+    {%- endfor -%}
+  </div>
+
+  <!-- Pagination -->
+  {% if paginate.pages > 1 %}
+    <nav class="pagination" role="navigation" aria-label="Pagination">
+      {% if paginate.previous %}
+        <a href="{{ paginate.previous.url }}" class="pagination__item pagination__item--prev">
+          ← Previous
+        </a>
+      {% endif %}
+      
+      {% for part in paginate.parts %}
+        {% if part.is_link %}
+          <a href="{{ part.url }}" class="pagination__item">{{ part.title }}</a>
+        {% else %}
+          <span class="pagination__item pagination__item--current">{{ part.title }}</span>
+        {% endif %}
+      {% endfor %}
+      
+      {% if paginate.next %}
+        <a href="{{ paginate.next.url }}" class="pagination__item pagination__item--next">
+          Next →
+        </a>
+      {% endif %}
+    </nav>
+  {% endif %}
+</div>
+
+<style>
+/* Collection page styles */
+.collection-wrapper {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.debug-info {
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 0.5rem;
+  margin-bottom: 2rem;
+}
+
+.debug-info h4 {
+  margin-top: 0;
+  color: #495057;
+}
+
+.debug-info ul {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.grid {
+  display: grid;
+  gap: 2rem;
+  margin-top: 2rem;
+}
+
+.grid--1-col { grid-template-columns: 1fr; }
+.grid--2-col-tablet { grid-template-columns: repeat(2, 1fr); }
+.grid--4-col-desktop { grid-template-columns: repeat(4, 1fr); }
+
+@media (min-width: 768px) {
+  .grid--2-col-tablet { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (min-width: 1024px) {
+  .grid--4-col-desktop { grid-template-columns: repeat(4, 1fr); }
+}
+
+.card {
+  border: 1px solid #e9ecef;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  transition: transform 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.card__media img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.card__content {
+  padding: 1rem;
+}
+
+.card__heading {
+  margin: 0 0 0.5rem 0;
+}
+
+.card__heading a {
+  text-decoration: none;
+  color: inherit;
+}
+
+.price {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.price__compare {
+  text-decoration: line-through;
+  color: #6c757d;
+}
+
+.product-meta {
+  font-size: 0.875rem;
+  color: #6c757d;
+  margin-top: 0.5rem;
+}
+
+.product-meta div {
+  margin-bottom: 0.25rem;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 4rem 2rem;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 3rem;
+}
+
+.pagination__item {
+  padding: 0.5rem 1rem;
+  border: 1px solid #dee2e6;
+  border-radius: 0.25rem;
+  text-decoration: none;
+  color: #495057;
+}
+
+.pagination__item--current {
+  background: #007bff;
+  color: white;
+  border-color: #007bff;
+}
+
+.pagination__item:hover {
+  background: #f8f9fa;
+}
+</style>
+
+<script>
+// Additional debugging for filter testing
+console.log('🔧 Filter Debug:', {
+  'Current URL': window.location.href,
+  'Search Params': Object.fromEntries(new URLSearchParams(window.location.search)),
+  'Collection Data': window.collectionData || 'Not available'
+});
+
+// Test filter functionality
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('🚀 Custom filters initialized');
+  
+  // Log when filters are applied
+  const form = document.getElementById('CustomFilterForm');
+  if (form) {
+    form.addEventListener('change', function(e) {
+      console.log('🔄 Filter changed:', e.target.name, '=', e.target.value);
+    });
+  }
+});
+</script> 
